@@ -12,6 +12,7 @@ import postRoutes from "./routes/postRoutes.js";
 import commentRoutes from "./routes/commentRoutes.js";
 import eventRoutes from "./routes/eventRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 
 dotenv.config();
@@ -48,6 +49,7 @@ app.use("/api/posts/:postId/comments", commentRoutes);
 app.use("/api/events", eventRoutes);
 
 app.use("/api/projects", projectRoutes);
+app.use("/api/admin", adminRoutes);
 
 
 // 404
