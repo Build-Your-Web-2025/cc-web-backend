@@ -17,8 +17,8 @@ router.get("/", userProtect, getEvents);        // or adminProtect also works, b
 router.get("/:id", userProtect, getEventById);
 
 // Admin-only create/update/delete
-router.post("/", adminProtect, createEvent);
-router.put("/:id", adminProtect, updateEvent);
+router.post("/newevent", adminProtect, createEvent);
+router.put("/update/:id", adminProtect, updateEvent);
 router.delete("/:id", adminProtect, deleteEvent);
 
 // Students RSVP

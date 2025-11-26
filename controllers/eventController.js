@@ -37,32 +37,37 @@ export const getEvents = async (req, res) => {
 // Admin only (adminProtect)
 //
 export const createEvent = async (req, res) => {
-  try {
-    const { title, description, date, location, department } = req.body;
-
-    if (!title || !date) {
-      return res.status(400).json({ message: "Title and date are required" });
+    try {
+      const { title, description, date, location, department, imageUrl } = req.body;
+  
+      if (!title || !date) {
+        return res.status(400).json({ message: "Title and date are required" });
+      }
+  
+      const eventDate = new Date(date + "T00:00:00");
+  
+      const event = await Event.create({
+        title,
+        description,
+        date: eventDate,
+        location,
+        department,
+        imageUrl,
+        createdBy: req.admin._id,
+      });
+  
+      // ✅ Re-fetch with populate (no execPopulate, no chaining problem)
+      const populated = await Event.findById(event._id)
+        .populate("createdBy", "name email department designation")
+        .populate("rsvps", "name department year");
+  
+      res.status(201).json(populated);
+    } catch (err) {
+      console.error("createEvent error:", err.message);
+      res.status(500).json({ message: "Server error" });
     }
-
-    const event = await Event.create({
-      title,
-      description,
-      date,
-      location,
-      department,
-      createdBy: req.admin._id, // from adminProtect
-    });
-
-    const populated = await event
-      .populate("createdBy", "name email department designation")
-      .execPopulate?.() || event; // compat if execPopulate not available
-
-    res.status(201).json(populated);
-  } catch (err) {
-    console.error("createEvent error:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
-};
+  };
+  
 
 //
 // GET /api/events/:id
@@ -119,36 +124,51 @@ export const rsvpEvent = async (req, res) => {
 // Admin can edit event
 //
 export const updateEvent = async (req, res) => {
-  try {
-    const event = await Event.findById(req.params.id);
-
-    if (!event) return res.status(404).json({ message: "Event not found" });
-
-    // Only the creator admin can edit (optional)
-    if (event.createdBy.toString() !== req.admin._id.toString()) {
-      return res.status(403).json({ message: "Only creator admin can edit this event" });
-    }
-
-    const fields = ["title", "description", "date", "location", "department"];
-    fields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        event[field] = req.body[field];
+    try {
+      const event = await Event.findById(req.params.id);
+  
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
       }
-    });
-
-    await event.save();
-
-    const populated = await event
-      .populate("createdBy", "name email department designation")
-      .populate("rsvps", "name department year")
-      .execPopulate?.() || event;
-
-    res.json({ message: "Event updated", event: populated });
-  } catch (err) {
-    console.error("updateEvent error:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
-};
+  
+      // Only the creator admin can edit (optional)
+      if (event.createdBy.toString() !== req.admin._id.toString()) {
+        return res
+          .status(403)
+          .json({ message: "Only creator admin can edit this event" });
+      }
+  
+      const fields = ["title", "description", "location", "department", "imageUrl"];
+  
+      fields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          event[field] = req.body[field];
+        }
+      });
+  
+      // 🔥 Handle date separately to control timezone
+      if (req.body.date !== undefined) {
+        // expect `date` as "YYYY-MM-DD" from frontend
+        event.date = new Date(req.body.date + "T00:00:00");
+      }
+  
+      await event.save();
+  
+      const populated = await Event.findById(event._id)
+        .populate("createdBy", "name email department designation")
+        .populate("rsvps", "name department year");
+  
+      res.json({
+        message: "Event updated",
+        event: populated,
+      });
+    } catch (err) {
+      console.error("updateEvent error:", err.message);
+      res.status(500).json({ message: "Server error" });
+    }
+  };
+  
+  
 
 //
 // DELETE /api/events/:id

@@ -14,6 +14,7 @@ const eventSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
+    imageUrl: String,
     // Students who RSVP'd
     rsvps: [
       {
