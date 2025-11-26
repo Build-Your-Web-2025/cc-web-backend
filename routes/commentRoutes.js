@@ -1,6 +1,6 @@
 // routes/commentRoutes.js
 import express from "express";
-import { userProtect } from "../middleware/authMiddleware.js";
+import { userOrAdminProtect } from "../middleware/authMiddleware.js";
 import {
   getCommentsForPost,
   addCommentToPost,
@@ -9,7 +9,7 @@ import {
 const router = express.Router({ mergeParams: true });
 
 // /api/posts/:postId/comments
-router.get("/", userProtect, getCommentsForPost);
-router.post("/", userProtect, addCommentToPost);
+router.get("/", userOrAdminProtect, getCommentsForPost);
+router.post("/", userOrAdminProtect, addCommentToPost);
 
 export default router;

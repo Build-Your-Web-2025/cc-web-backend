@@ -8,11 +8,41 @@ export const getCommentsForPost = async (req, res) => {
   try {
     const { postId } = req.params;
 
-    const comments = await Comment.find({ post: postId })
-      .populate("author", "name department year avatarUrl")
-      .sort({ createdAt: 1 }); // oldest first
+    const rawComments = await Comment.find({ post: postId })
+      .sort({ createdAt: 1 })
+      .lean(); // oldest first
 
-    res.json(comments);
+    const Admin = (await import("../models/Admin.js")).default;
+    const User = (await import("../models/User.js")).default;
+
+    // Manually populate each comment's author from User or Admin
+    const populatedComments = await Promise.all(
+      rawComments.map(async (comment) => {
+        let authorData = null;
+
+        // Try User first
+        authorData = await User.findById(comment.author).select("name department year avatarUrl").lean();
+
+        // If not found in User, try Admin
+        if (!authorData) {
+          const adminData = await Admin.findById(comment.author).select("name department designation").lean();
+          if (adminData) {
+            authorData = {
+              _id: adminData._id,
+              name: adminData.name,
+              department: adminData.department,
+            };
+          }
+        }
+
+        return {
+          ...comment,
+          author: authorData,
+        };
+      })
+    );
+
+    res.json(populatedComments);
   } catch (err) {
     console.error("getCommentsForPost error:", err.message);
     res.status(500).json({ message: "Server error" });
@@ -37,12 +67,28 @@ export const addCommentToPost = async (req, res) => {
       text: text.trim(),
     });
 
-    const populated = await comment.populate(
-      "author",
-      "name department year avatarUrl"
-    );
+    let commentData = comment.toObject();
 
-    res.status(201).json(populated);
+    // Check if author is admin or user
+    if (req.userType === "admin") {
+      const Admin = (await import("../models/Admin.js")).default;
+      const adminAuthor = await Admin.findById(req.user._id).select("name department designation");
+      if (adminAuthor) {
+        commentData.author = {
+          _id: adminAuthor._id,
+          name: adminAuthor.name,
+          department: adminAuthor.department,
+        };
+      }
+    } else {
+      const User = (await import("../models/User.js")).default;
+      const userAuthor = await User.findById(req.user._id).select("name department year avatarUrl");
+      if (userAuthor) {
+        commentData.author = userAuthor;
+      }
+    }
+
+    res.status(201).json(commentData);
   } catch (err) {
     console.error("addCommentToPost error:", err.message);
     res.status(500).json({ message: "Server error" });
