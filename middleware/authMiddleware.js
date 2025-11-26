@@ -58,3 +58,42 @@ export const adminProtect = async (req, res, next) => {
     res.status(401).json({ message: "Not authorized, token failed" });
   }
 };
+
+// For routes accessible by both users and admins
+export const userOrAdminProtect = async (req, res, next) => {
+  let token = null;
+
+  if (req.headers.authorization?.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Not authorized, no token" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Try to find as user first
+    let user = await User.findById(decoded.id).select("-password");
+    if (user) {
+      req.user = user;
+      req.userType = "user";
+      return next();
+    }
+
+    // If not user, try admin
+    let admin = await Admin.findById(decoded.id).select("-password");
+    if (admin) {
+      req.admin = admin;
+      req.user = admin; // Set as user for compatibility
+      req.userType = "admin";
+      return next();
+    }
+
+    return res.status(401).json({ message: "User/Admin not found or invalid token" });
+  } catch (err) {
+    console.error("userOrAdminProtect error:", err.message);
+    res.status(401).json({ message: "Not authorized, token failed" });
+  }
+};

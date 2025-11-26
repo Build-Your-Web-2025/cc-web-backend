@@ -56,3 +56,101 @@ export const getAdminSummary = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// GET /api/admin/users
+// Get all users with pagination and filters
+export const getAllUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, department, search } = req.query;
+    const filter = {};
+
+    if (department) {
+      filter.department = department;
+    }
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .skip(skip),
+      User.countDocuments(filter),
+    ]);
+
+    res.json({
+      users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("getAllUsers error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// DELETE /api/admin/users/:id
+// Delete a user
+export const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await user.deleteOne();
+
+    res.json({ message: "User deleted successfully" });
+  } catch (err) {
+    console.error("deleteUser error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// PUT /api/admin/users/:id
+// Update user by admin
+export const updateUserByAdmin = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const allowedFields = ["name", "email", "department", "year", "bio", "interests"];
+    const updates = {};
+
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true }
+    ).select("-password");
+
+    res.json({
+      message: "User updated successfully",
+      user: updatedUser,
+    });
+  } catch (err) {
+    console.error("updateUserByAdmin error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
