@@ -14,11 +14,40 @@ export const getPosts = async (req, res) => {
     if (author) filter.author = author;
     if (project) filter.project = project;
 
-    const posts = await Post.find(filter)
-      .populate("author", "name department year avatarUrl")
-      .sort({ createdAt: -1 });
+    // Get posts without population first to preserve author IDs
+    const rawPosts = await Post.find(filter).sort({ createdAt: -1 }).lean();
 
-    res.json({ message: "Posts Fetched Successfully",posts });
+    const Admin = (await import("../models/Admin.js")).default;
+    const User = (await import("../models/User.js")).default;
+
+    // Manually populate each post's author from User or Admin
+    const populatedPosts = await Promise.all(
+      rawPosts.map(async (post) => {
+        let authorData = null;
+
+        // Try User first
+        authorData = await User.findById(post.author).select("name department year avatarUrl").lean();
+
+        // If not found in User, try Admin
+        if (!authorData) {
+          const adminData = await Admin.findById(post.author).select("name department designation").lean();
+          if (adminData) {
+            authorData = {
+              _id: adminData._id,
+              name: adminData.name,
+              department: adminData.department,
+            };
+          }
+        }
+
+        return {
+          ...post,
+          author: authorData,
+        };
+      })
+    );
+
+    res.json({ message: "Posts Fetched Successfully", posts: populatedPosts });
   } catch (err) {
     console.error("getPosts error:", err.message);
     res.status(500).json({ message: "Server error" });
@@ -44,9 +73,29 @@ export const createPost = async (req, res) => {
       project: project || null,
     });
 
-    const populated = await post.populate("author", "name department year avatarUrl");
+    let postData = post.toObject();
 
-    res.status(201).json(populated);
+    // Check if author is admin or user
+    if (req.userType === "admin") {
+      const Admin = (await import("../models/Admin.js")).default;
+      const adminAuthor = await Admin.findById(req.user._id).select("name department designation");
+      if (adminAuthor) {
+        postData.author = {
+          _id: adminAuthor._id,
+          name: adminAuthor.name,
+          department: adminAuthor.department,
+          designation: adminAuthor.designation,
+        };
+      }
+    } else {
+      const User = (await import("../models/User.js")).default;
+      const userAuthor = await User.findById(req.user._id).select("name department year avatarUrl");
+      if (userAuthor) {
+        postData.author = userAuthor;
+      }
+    }
+
+    res.status(201).json(postData);
   } catch (err) {
     console.error("createPost error:", err.message);
     res.status(500).json({ message: "Server error" });
@@ -58,14 +107,28 @@ export const createPost = async (req, res) => {
 //
 export const getPostById = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id).populate(
-      "author",
-      "name department year avatarUrl"
-    );
+    const post = await Post.findById(req.params.id).lean();
 
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    res.json(post);
+    const Admin = (await import("../models/Admin.js")).default;
+    const User = (await import("../models/User.js")).default;
+
+    // Try to populate author from User first, then Admin
+    let authorData = await User.findById(post.author).select("name department year avatarUrl").lean();
+
+    if (!authorData) {
+      const adminData = await Admin.findById(post.author).select("name department designation").lean();
+      if (adminData) {
+        authorData = {
+          _id: adminData._id,
+          name: adminData.name,
+          department: adminData.department,
+        };
+      }
+    }
+
+    res.json({ ...post, author: authorData });
   } catch (err) {
     console.error("getPostById error:", err.message);
     res.status(500).json({ message: "Server error" });
